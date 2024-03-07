@@ -2,15 +2,3 @@ Vector2 :: struct {
     x: float;
     y: float;
 }
-
-add :: (a: int, b: int) -> int {
-   <- a + b;
-}
-
-
-main :: (){
-    x := 2;
-    y : int = 3;
-    print_int(add(x,y + 1) * 4); print("\n");
-    print("hello world!\n");
-}

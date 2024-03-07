@@ -1,3 +1,5 @@
+import Nodes.*;
+
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -101,6 +103,148 @@ public class Main {
         return tokens;
     }
 
+    static void print_error(String text){
+        System.out.println(text);
+        System.exit(1);
+    }
+
+    static class Parser {
+        String program_text;
+        List<Token> tokens;
+        int token_index;
+
+        Token eat_token(){
+            while(token_index < tokens.size()){
+                Token current_token = tokens.get(token_index++);
+                if(!current_token.type.is_whitespace())return current_token;
+            }
+            return null;
+        }
+
+        Token peek_token(int lookahead){
+            int peek_index = token_index;
+            int found_tokens = 0;
+            while (peek_index < tokens.size()){
+                Token current_token = tokens.get(peek_index++);
+                if(!current_token.type.is_whitespace()) found_tokens++;
+                if(found_tokens == lookahead)return current_token;
+            }
+            return null;
+        }
+        Token peek_token(){ return peek_token(1); }
+
+        String get_token_value(Token token){
+            return program_text.substring(token.index, token.index + token.length);
+        }
+    }
+
+    static Node parse_type(Parser parser){
+        Token next = parser.peek_token();
+        if(next.type == Token.Type.IDENTIFIER){
+            Token identifier = parser.eat_token();
+            String identifier_text = parser.get_token_value(identifier);
+            PrimitiveType.Type primitive_type = switch (identifier_text){
+                case "float" -> PrimitiveType.Type.FLOAT;
+                case "int" -> PrimitiveType.Type.INT;
+                case "bool" -> PrimitiveType.Type.BOOL;
+                default -> null;
+            };
+            if(primitive_type == null){
+                StructType structType = new StructType();
+                structType.name = identifier_text;
+                return structType;
+            }
+            PrimitiveType primitive = new PrimitiveType();
+            primitive.type = primitive_type;
+            return primitive;
+        }
+        return null;
+    }
+
+    static Node parse_statement(Parser parser){
+        Token start = parser.peek_token();
+        if(start.type == Token.Type.IDENTIFIER){
+            Token next = parser.peek_token(2);
+            if(next.type == Token.Type.COLON){
+                Token name = parser.eat_token();
+                String name_string = parser.get_token_value(name);
+                parser.eat_token();
+
+                next = parser.peek_token();
+                if(next.type == Token.Type.COLON){
+                    // constant decl
+                    parser.eat_token();
+                    next = parser.peek_token();
+                    if(next.type == Token.Type.STRUCT){
+                        parser.eat_token();
+                        Struct struct = new Struct();
+                        struct.name = name_string;
+                        struct.body = parse_block(parser);
+                        return struct;
+                    }
+                    else if(next.type == Token.Type.OPEN_PARENTHESIS){
+
+                    }
+                    else{
+                        print_error("constant declaration must be either a struct or procedure");
+                    }
+                }
+                else{
+                    VariableDeclaration var_decleration = new VariableDeclaration();
+                    var_decleration.name = name_string;
+                    var_decleration.type = parse_type(parser);
+                    return var_decleration;
+                }
+            }
+            else{
+                // expression
+            }
+        }
+        else if(start.type.is_keyword()){
+
+        }
+        else{
+            // parse expression
+        }
+        return null;
+    }
+
+    static List<Node> parse_block(Parser parser){
+        Token next = parser.peek_token();
+        if(next.type != Token.Type.OPEN_BRACE){
+            print_error("block must start with open brace");
+        }
+        parser.eat_token();
+
+        List<Node> block = new ArrayList<>();
+
+        while (parser.peek_token() != null && parser.peek_token().type != Token.Type.CLOSE_BRACE){
+            Node statement = parse_statement(parser);
+            next = parser.peek_token();
+            if(next.type != Token.Type.SEMI_COLON){
+                print_error("missing semi colon");
+            }
+            parser.eat_token();
+
+            block.add(statement);
+        }
+
+        if(parser.peek_token() == null){
+            print_error("block must end with a close brace");
+        }
+        parser.eat_token();
+
+        return block;
+    }
+
+    static List<Node> parse_program(Parser parser){
+        List<Node> program = new ArrayList<>();
+        while (parser.peek_token() != null){
+            program.add(parse_statement(parser));
+        }
+        return program;
+    }
+
     public static void main(String[] args) {
         String program_text;
 
@@ -122,5 +266,12 @@ public class Main {
             }
             System.out.printf("%s %s\n", type_text, token_value);
         }
+
+        Parser parser = new Parser();
+        parser.program_text = program_text;
+        parser.tokens = tokens;
+
+        List<Node> program = parse_program(parser);
+        System.out.printf("");
     }
 }
