@@ -96,6 +96,7 @@ public class Main {
 
                     i += token.length - 1;
                     last_token_index = i + 1;
+                    break;
                 }
             }
         }
@@ -138,6 +139,74 @@ public class Main {
         }
     }
 
+    static BinaryOperator.Operation to_binary_operation(Token token){
+        return switch (token.type){
+            case PLUS -> BinaryOperator.Operation.ADD;
+            case MINUS -> BinaryOperator.Operation.SUBTRACT;
+            case STAR -> BinaryOperator.Operation.MULTIPLY;
+            case FORWARD_SLASH -> BinaryOperator.Operation.DIVIDE;
+            default -> null;
+        };
+    }
+
+    static Node parse_subexpression(Parser parser){
+        Token next = parser.eat_token();
+        if(next.type == Token.Type.IDENTIFIER){
+            if(parser.peek_token().type == Token.Type.OPEN_PARENTHESIS){
+                ProcedureCall procedure_call = new ProcedureCall();
+                procedure_call.name = parser.get_token_value(next);
+            }
+            VariableCall variable_call = new VariableCall();
+            variable_call.name = parser.get_token_value(next);
+            return variable_call;
+        }
+        else if(next.type == Token.Type.NUMBER){
+            if(parser.peek_token().type == Token.Type.DOT){
+                parser.eat_token();
+                int float_length = next.length;
+                if(parser.peek_token().type == Token.Type.NUMBER){
+                    Token decimal = parser.eat_token();
+                    float_length += 1 + decimal.length;
+                }
+                String float_string = parser.program_text.substring(next.index, next.index + float_length);
+                return new Literal<>(Float.parseFloat(float_string));
+            }
+            return new Literal<>(Integer.parseInt(parser.get_token_value(next)));
+        }
+        else if(next.type == Token.Type.OPEN_PARENTHESIS){
+
+        }
+        return null;
+    }
+
+    static Node parse_increasing_precedence(Parser parser, Node left, int min_precedence){
+        if(!parser.peek_token().type.is_binary_operator())return left;
+        BinaryOperator.Operation operation = to_binary_operation(parser.peek_token());
+        if(operation.ordinal() <= min_precedence) return left;
+
+        parser.eat_token();
+
+        BinaryOperator binary_operator = new BinaryOperator();
+        binary_operator.operation = operation;
+        binary_operator.left = left;
+        binary_operator.right = parse_expression(parser, operation.ordinal());
+        return binary_operator;
+    }
+
+    static Node parse_expression(Parser parser, int precedence){
+        Node left = parse_subexpression(parser);
+        while (true){
+            Node right = parse_increasing_precedence(parser, left, precedence);
+            if(left == right)break;
+            left = right;
+        };
+        return left;
+    }
+
+    static Node parse_expression(Parser parser){
+        return parse_expression(parser, Integer.MIN_VALUE);
+    }
+
     static Node parse_type(Parser parser){
         Token next = parser.peek_token();
         if(next.type == Token.Type.IDENTIFIER){
@@ -159,6 +228,31 @@ public class Main {
             return primitive;
         }
         return null;
+    }
+
+    interface ParseFunction {
+        Node parse(Parser parser);
+    }
+
+    static List<Node> parse_variadic(Parser parser, ParseFunction parse_function){
+        if(parser.peek_token().type != Token.Type.OPEN_PARENTHESIS){
+            print_error("variadic must start with open parenthesis");
+        }
+        parser.eat_token();
+
+        List<Node> nodes = new ArrayList<>();
+        while (parser.peek_token() != null && parser.peek_token().type != Token.Type.CLOSE_PARENTHESIS){
+            Node node = parse_function.parse(parser);
+            nodes.add(node);
+            if(parser.peek_token().type != Token.Type.COMMA)break;
+            parser.eat_token();
+        }
+
+        if(parser.peek_token().type != Token.Type.CLOSE_PARENTHESIS){
+            print_error("variadic must end with close parenthesis");
+        }
+        parser.eat_token();
+        return nodes;
     }
 
     static Node parse_statement(Parser parser){
@@ -183,7 +277,19 @@ public class Main {
                         return struct;
                     }
                     else if(next.type == Token.Type.OPEN_PARENTHESIS){
-
+                        Procedure procedure = new Procedure();
+                        procedure.name = name_string;
+                        procedure.inputs = parse_variadic(parser, Main::parse_statement);
+                        if(parser.peek_token().type == Token.Type.FORWARD_ARROW){
+                            parser.eat_token();
+                            Node type = parse_type(parser);
+                            if(type == null){
+                                print_error("procedures that define a return must specify a return type");
+                            }
+                            procedure.output = type;
+                        }
+                        procedure.body = parse_block(parser);
+                        return procedure;
                     }
                     else{
                         print_error("constant declaration must be either a struct or procedure");
@@ -203,8 +309,14 @@ public class Main {
         else if(start.type.is_keyword()){
 
         }
+        else if(start.type == Token.Type.BACKWARDS_ARROW){
+            parser.eat_token();
+            ReturnStatement statement = new ReturnStatement();
+            statement.value = parse_expression(parser);
+            return statement;
+        }
         else{
-            // parse expression
+            parse_expression(parser);
         }
         return null;
     }

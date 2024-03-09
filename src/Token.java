@@ -58,6 +58,13 @@ public class Token {
                 default -> false;
             };
         }
+
+        public boolean is_binary_operator(){
+            return switch (this){
+                case PLUS, MINUS, STAR, FORWARD_SLASH-> true;
+                default ->  false;
+            };
+        }
     }
 
     public Type type;
